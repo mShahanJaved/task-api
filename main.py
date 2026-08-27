@@ -16,6 +16,10 @@ async def validation_exception_handler(request, exc):
 class TaskCreate(BaseModel):
     title: str = Field(min_length=1)
 
+class TaskUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1)
+    done: bool | None = None
+
 @app.get("/")
 def root():
     return {
@@ -63,3 +67,40 @@ def create_task(task: TaskCreate):
     tasks.append(new_task)
 
     return new_task
+
+@app.put("/tasks/{task_id}")
+def update_task(task_id: int, updates: TaskUpdate):
+
+    if updates.title is None and updates.done is None:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "At least title or done is required"}
+        )
+
+    for task in tasks:
+        if task["id"] == task_id:
+
+            if updates.title is not None:
+                task["title"] = updates.title
+
+            if updates.done is not None:
+                task["done"] = updates.done
+
+            return task
+
+    return JSONResponse(
+        status_code=404,
+        content={"error": f"Task {task_id} not found"}
+    )
+
+@app.delete("/tasks/{task_id}", status_code=204)
+def delete_task(task_id: int):
+    for task in tasks:
+        if task["id"] == task_id:
+            tasks.remove(task)
+            return
+
+    return JSONResponse(
+        status_code=404,
+        content={"error": f"Task {task_id} not found"}
+    )
