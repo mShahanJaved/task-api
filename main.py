@@ -5,6 +5,8 @@ from fastapi.exceptions import RequestValidationError
 
 app = FastAPI()
 
+
+# Handles invalid request bodies and returns a simple 400 error.
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
     return JSONResponse(
@@ -16,9 +18,20 @@ async def validation_exception_handler(request, exc):
 class TaskCreate(BaseModel):
     title: str = Field(min_length=1)
 
+
 class TaskUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1)
     done: bool | None = None
+
+
+# In-memory task storage.
+# Data will reset when the server restarts.
+tasks = [
+    {"id": 1, "title": "Learn FastAPI", "done": False},
+    {"id": 2, "title": "Build Task API", "done": False},
+    {"id": 3, "title": "Push to GitHub", "done": False},
+]
+
 
 @app.get("/", description="Returns information about the Task API.")
 def root():
@@ -33,17 +46,36 @@ def root():
 def health():
     return {"status": "ok"}
 
-tasks = [
-    {"id": 1, "title": "Learn FastAPI", "done": False},
-    {"id": 2, "title": "Build Task API", "done": False},
-    {"id": 3, "title": "Push to GitHub", "done": False},
-]
 
-@app.get("/tasks", description="Returns all tasks.")
-def get_tasks():
-    return tasks
+@app.get(
+    "/tasks",
+    description="Returns tasks with optional filtering and search."
+)
+def get_tasks(
+    done: bool | None = None,
+    search: str | None = None
+):
+    result = tasks
 
-@app.get("/tasks/{task_id}", description="Returns a single task by ID.")
+    # Filter tasks by completion status.
+    if done is not None:
+        result = [task for task in result if task["done"] == done]
+
+    # Search task titles.
+    if search is not None:
+        search = search.lower()
+        result = [
+            task for task in result
+            if search in task["title"].lower()
+        ]
+
+    return result
+
+
+@app.get(
+    "/tasks/{task_id}",
+    description="Returns a single task by ID."
+)
 def get_task(task_id: int):
     for task in tasks:
         if task["id"] == task_id:
@@ -54,7 +86,12 @@ def get_task(task_id: int):
         content={"error": f"Task {task_id} not found"}
     )
 
-@app.post("/tasks", status_code=201, description="Creates a new task.")
+
+@app.post(
+    "/tasks",
+    status_code=201,
+    description="Creates a new task."
+)
 def create_task(task: TaskCreate):
     new_id = max([t["id"] for t in tasks], default=0) + 1
 
@@ -68,7 +105,11 @@ def create_task(task: TaskCreate):
 
     return new_task
 
-@app.put("/tasks/{task_id}", description="Updates an existing task.")
+
+@app.put(
+    "/tasks/{task_id}",
+    description="Updates an existing task."
+)
 def update_task(task_id: int, updates: TaskUpdate):
 
     if updates.title is None and updates.done is None:
@@ -93,7 +134,12 @@ def update_task(task_id: int, updates: TaskUpdate):
         content={"error": f"Task {task_id} not found"}
     )
 
-@app.delete("/tasks/{task_id}", status_code=204, description="Deletes a task.")
+
+@app.delete(
+    "/tasks/{task_id}",
+    status_code=204,
+    description="Deletes a task."
+)
 def delete_task(task_id: int):
     for task in tasks:
         if task["id"] == task_id:
@@ -104,3 +150,38 @@ def delete_task(task_id: int):
         status_code=404,
         content={"error": f"Task {task_id} not found"}
     )
+
+
+@app.get(
+    "/stats",
+    description="Returns statistics about the tasks."
+)
+def get_stats():
+    total = len(tasks)
+    done = sum(1 for task in tasks if task["done"])
+    open_tasks = total - done
+
+    return {
+        "total": total,
+        "done": done,
+        "open": open_tasks
+    }
+
+
+@app.post(
+    "/reset",
+    description="Resets the task list to the original example tasks."
+)
+def reset_tasks():
+    global tasks
+
+    tasks = [
+        {"id": 1, "title": "Learn FastAPI", "done": False},
+        {"id": 2, "title": "Build Task API", "done": False},
+        {"id": 3, "title": "Push to GitHub", "done": False},
+    ]
+
+    return {
+        "message": "Tasks reset successfully",
+        "tasks": tasks
+    }
