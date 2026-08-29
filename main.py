@@ -58,7 +58,7 @@ tasks = [
     {"id": 3, "title": "Push to GitHub", "done": False},
 ]
 
-
+# Root Endpoint
 @app.get("/", description="Returns information about the Task API.")
 def root():
     return {
@@ -67,12 +67,12 @@ def root():
         "endpoints": ["/tasks"]
     }
 
-
+# To Check Health of the API
 @app.get("/health", description="Checks whether the API is running.")
 def health():
     return {"status": "ok"}
 
-
+# To Get All Tasks
 @app.get(
     "/tasks",
     description="Returns all tasks from the SQLite database."
@@ -95,7 +95,7 @@ def get_tasks():
         for row in rows
     ]
 
-
+# To Get a Single Task
 @app.get(
     "/tasks/{task_id}",
     description="Returns a single task by ID from the SQLite database."
@@ -125,7 +125,7 @@ def get_task(task_id: int):
         "done": bool(row[2])
     }
 
-
+# To Add Tasks
 @app.post(
     "/tasks",
     status_code=201,
@@ -157,7 +157,7 @@ def create_task(task: TaskCreate):
         "done": bool(row[2])
     }
 
-
+# To Update Tasks
 @app.put(
     "/tasks/{task_id}",
     description="Updates an existing task."
@@ -213,7 +213,7 @@ def update_task(task_id: int, updates: TaskUpdate):
         "done": bool(updated_row[2])
     }
 
-
+# To Delete Tasks
 @app.delete(
     "/tasks/{task_id}",
     status_code=204,
@@ -249,7 +249,7 @@ def delete_task(task_id: int):
 
     return None
 
-
+# To Get Statistics
 @app.get(
     "/stats",
     description="Returns statistics about the tasks."
@@ -265,7 +265,7 @@ def get_stats():
         "open": open_tasks
     }
 
-
+# To Reset Tasks
 @app.post(
     "/reset",
     description="Resets the task list to the original example tasks."
