@@ -132,17 +132,30 @@ def get_task(task_id: int):
     description="Creates a new task."
 )
 def create_task(task: TaskCreate):
-    new_id = max([t["id"] for t in tasks], default=0) + 1
+    conn = sqlite3.connect("tasks.db")
+    cursor = conn.cursor()
 
-    new_task = {
-        "id": new_id,
-        "title": task.title,
-        "done": False
+    cursor.execute(
+        "INSERT INTO tasks (title, done) VALUES (?, ?)",
+        (task.title, 0)
+    )
+
+    new_id = cursor.lastrowid
+    conn.commit()
+
+    cursor.execute(
+        "SELECT id, title, done FROM tasks WHERE id = ?",
+        (new_id,)
+    )
+    row = cursor.fetchone()
+
+    conn.close()
+
+    return {
+        "id": row[0],
+        "title": row[1],
+        "done": bool(row[2])
     }
-
-    tasks.append(new_task)
-
-    return new_task
 
 
 @app.put(
