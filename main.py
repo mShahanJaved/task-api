@@ -6,31 +6,48 @@ from fastapi.exceptions import RequestValidationError
 
 app = FastAPI()
 
-conn = sqlite3.connect("tasks.db")
-cursor = conn.cursor()
+DB_NAME = "tasks.db"
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS tasks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    done INTEGER NOT NULL DEFAULT 0
-)
-""")
 
-cursor.execute("SELECT COUNT(*) FROM tasks")
-count = cursor.fetchone()[0]
+def get_connection():
+    """Creates a new SQLite connection with row access by column name."""
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-if count == 0:
-    cursor.executemany(
-        "INSERT INTO tasks (title, done) VALUES (?, ?)",
-        [
-            ("Learn FastAPI", 0),
-            ("Build Task API", 0),
-            ("Push to GitHub", 0),
-        ]
-    )
 
-conn.commit()
+def init_db():
+    """Creates the tasks table and inserts seed data if the table is empty."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            done INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
+    cursor.execute("SELECT COUNT(*) FROM tasks")
+    count = cursor.fetchone()[0]
+
+    if count == 0:
+        cursor.executemany(
+            "INSERT INTO tasks (title, done) VALUES (?, ?)",
+            [
+                ("Learn FastAPI", 0),
+                ("Build Task API", 0),
+                ("Push to GitHub", 0),
+            ]
+        )
+        conn.commit()
+
+    conn.close()
+
+
+init_db()
+
 
 # Handles invalid request bodies and returns a simple 400 error.
 @app.exception_handler(RequestValidationError)
@@ -50,13 +67,14 @@ class TaskUpdate(BaseModel):
     done: bool | None = None
 
 
-# In-memory task storage.
-# Data will reset when the server restarts.
-tasks = [
-    {"id": 1, "title": "Learn FastAPI", "done": False},
-    {"id": 2, "title": "Build Task API", "done": False},
-    {"id": 3, "title": "Push to GitHub", "done": False},
-]
+def row_to_task(row: sqlite3.Row) -> dict:
+    """Converts a sqlite3.Row into a task dictionary."""
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "done": bool(row["done"])
+    }
+
 
 # Root Endpoint
 @app.get("/", description="Returns information about the Task API.")
@@ -67,33 +85,49 @@ def root():
         "endpoints": ["/tasks"]
     }
 
+
 # To Check Health of the API
 @app.get("/health", description="Checks whether the API is running.")
 def health():
     return {"status": "ok"}
 
-# To Get All Tasks
-@app.get(
-    "/tasks",
-    description="Returns all tasks from the SQLite database."
-)
-def get_tasks():
-    conn = sqlite3.connect("tasks.db")
+
+@app.get("/tasks", description="Returns tasks, with optional filtering and search.")
+def get_tasks(
+    done: bool | None = None,
+    search: str | None = None
+):
+    conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM tasks")
+    query = "SELECT id, title, done FROM tasks"
+    conditions = []
+    params = []
+
+    # SQL status filtering
+    if done is not None:
+        conditions.append("done = ?")
+        params.append(1 if done else 0)
+
+    # SQL title searching
+    if search:
+        conditions.append("title LIKE ?")
+        params.append(f"%{search}%")
+
+    # Add WHERE only when filters are provided
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    # SQL sorting
+    query += " ORDER BY title"
+
+    cursor.execute(query, params)
     rows = cursor.fetchall()
 
     conn.close()
 
-    return [
-        {
-            "id": row[0],
-            "title": row[1],
-            "done": bool(row[2])
-        }
-        for row in rows
-    ]
+    return [row_to_task(row) for row in rows]
+
 
 # To Get a Single Task
 @app.get(
@@ -101,29 +135,25 @@ def get_tasks():
     description="Returns a single task by ID from the SQLite database."
 )
 def get_task(task_id: int):
-    conn = sqlite3.connect("tasks.db")
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT * FROM tasks WHERE id = ?",
+        "SELECT id, title, done FROM tasks WHERE id = ?",
         (task_id,)
     )
 
     row = cursor.fetchone()
-
     conn.close()
 
     if row is None:
         return JSONResponse(
             status_code=404,
-            content={"error": "Task not found"}
+            content={"error": f"Task {task_id} not found"}
         )
 
-    return {
-        "id": row[0],
-        "title": row[1],
-        "done": bool(row[2])
-    }
+    return row_to_task(row)
+
 
 # To Add Tasks
 @app.post(
@@ -132,7 +162,7 @@ def get_task(task_id: int):
     description="Creates a new task."
 )
 def create_task(task: TaskCreate):
-    conn = sqlite3.connect("tasks.db")
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
@@ -148,14 +178,10 @@ def create_task(task: TaskCreate):
         (new_id,)
     )
     row = cursor.fetchone()
-
     conn.close()
 
-    return {
-        "id": row[0],
-        "title": row[1],
-        "done": bool(row[2])
-    }
+    return row_to_task(row)
+
 
 # To Update Tasks
 @app.put(
@@ -170,7 +196,7 @@ def update_task(task_id: int, updates: TaskUpdate):
             content={"error": "At least title or done is required"}
         )
 
-    conn = sqlite3.connect("tasks.db")
+    conn = get_connection()
     cursor = conn.cursor()
 
     # First get the existing task
@@ -188,14 +214,13 @@ def update_task(task_id: int, updates: TaskUpdate):
         )
 
     # Keep existing values when a field isn't provided
-    title = updates.title if updates.title is not None else row[1]
-    done = int(updates.done) if updates.done is not None else row[2]
+    title = updates.title if updates.title is not None else row["title"]
+    done = int(updates.done) if updates.done is not None else row["done"]
 
     cursor.execute(
         "UPDATE tasks SET title = ?, done = ? WHERE id = ?",
         (title, done, task_id)
     )
-
     conn.commit()
 
     # Get updated task
@@ -204,14 +229,10 @@ def update_task(task_id: int, updates: TaskUpdate):
         (task_id,)
     )
     updated_row = cursor.fetchone()
-
     conn.close()
 
-    return {
-        "id": updated_row[0],
-        "title": updated_row[1],
-        "done": bool(updated_row[2])
-    }
+    return row_to_task(updated_row)
+
 
 # To Delete Tasks
 @app.delete(
@@ -220,8 +241,7 @@ def update_task(task_id: int, updates: TaskUpdate):
     description="Deletes a task."
 )
 def delete_task(task_id: int):
-
-    conn = sqlite3.connect("tasks.db")
+    conn = get_connection()
     cursor = conn.cursor()
 
     # Check whether task exists
@@ -229,7 +249,6 @@ def delete_task(task_id: int):
         "SELECT id FROM tasks WHERE id = ?",
         (task_id,)
     )
-
     row = cursor.fetchone()
 
     if row is None:
@@ -243,11 +262,11 @@ def delete_task(task_id: int):
         "DELETE FROM tasks WHERE id = ?",
         (task_id,)
     )
-
     conn.commit()
     conn.close()
 
     return None
+
 
 # To Get Statistics
 @app.get(
@@ -255,31 +274,53 @@ def delete_task(task_id: int):
     description="Returns statistics about the tasks."
 )
 def get_stats():
-    total = len(tasks)
-    done = sum(1 for task in tasks if task["done"])
-    open_tasks = total - done
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) AS total FROM tasks")
+    total = cursor.fetchone()["total"]
+
+    cursor.execute("SELECT COUNT(*) AS done FROM tasks WHERE done = 1")
+    done = cursor.fetchone()["done"]
+
+    conn.close()
 
     return {
         "total": total,
         "done": done,
-        "open": open_tasks
+        "open": total - done
     }
+
 
 # To Reset Tasks
 @app.post(
     "/reset",
-    description="Resets the task list to the original example tasks."
+    description="Resets the tasks table to the original example tasks."
 )
 def reset_tasks():
-    global tasks
+    conn = get_connection()
+    cursor = conn.cursor()
 
-    tasks = [
-        {"id": 1, "title": "Learn FastAPI", "done": False},
-        {"id": 2, "title": "Build Task API", "done": False},
-        {"id": 3, "title": "Push to GitHub", "done": False},
-    ]
+    cursor.execute("DELETE FROM tasks")
+    cursor.execute(
+        "DELETE FROM sqlite_sequence WHERE name = 'tasks'"
+    )
+
+    cursor.executemany(
+        "INSERT INTO tasks (title, done) VALUES (?, ?)",
+        [
+            ("Learn FastAPI", 0),
+            ("Build Task API", 0),
+            ("Push to GitHub", 0),
+        ]
+    )
+    conn.commit()
+
+    cursor.execute("SELECT id, title, done FROM tasks ORDER BY id")
+    rows = cursor.fetchall()
+    conn.close()
 
     return {
         "message": "Tasks reset successfully",
-        "tasks": tasks
+        "tasks": [row_to_task(row) for row in rows]
     }
