@@ -1,3 +1,4 @@
+import sqlite3
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -5,6 +6,31 @@ from fastapi.exceptions import RequestValidationError
 
 app = FastAPI()
 
+conn = sqlite3.connect("tasks.db")
+cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    done INTEGER NOT NULL DEFAULT 0
+)
+""")
+
+cursor.execute("SELECT COUNT(*) FROM tasks")
+count = cursor.fetchone()[0]
+
+if count == 0:
+    cursor.executemany(
+        "INSERT INTO tasks (title, done) VALUES (?, ?)",
+        [
+            ("Learn FastAPI", 0),
+            ("Build Task API", 0),
+            ("Push to GitHub", 0),
+        ]
+    )
+
+conn.commit()
 
 # Handles invalid request bodies and returns a simple 400 error.
 @app.exception_handler(RequestValidationError)
@@ -49,42 +75,55 @@ def health():
 
 @app.get(
     "/tasks",
-    description="Returns tasks with optional filtering and search."
+    description="Returns all tasks from the SQLite database."
 )
-def get_tasks(
-    done: bool | None = None,
-    search: str | None = None
-):
-    result = tasks
+def get_tasks():
+    conn = sqlite3.connect("tasks.db")
+    cursor = conn.cursor()
 
-    # Filter tasks by completion status.
-    if done is not None:
-        result = [task for task in result if task["done"] == done]
+    cursor.execute("SELECT * FROM tasks")
+    rows = cursor.fetchall()
 
-    # Search task titles.
-    if search is not None:
-        search = search.lower()
-        result = [
-            task for task in result
-            if search in task["title"].lower()
-        ]
+    conn.close()
 
-    return result
+    return [
+        {
+            "id": row[0],
+            "title": row[1],
+            "done": bool(row[2])
+        }
+        for row in rows
+    ]
 
 
 @app.get(
     "/tasks/{task_id}",
-    description="Returns a single task by ID."
+    description="Returns a single task by ID from the SQLite database."
 )
 def get_task(task_id: int):
-    for task in tasks:
-        if task["id"] == task_id:
-            return task
+    conn = sqlite3.connect("tasks.db")
+    cursor = conn.cursor()
 
-    return JSONResponse(
-        status_code=404,
-        content={"error": f"Task {task_id} not found"}
+    cursor.execute(
+        "SELECT * FROM tasks WHERE id = ?",
+        (task_id,)
     )
+
+    row = cursor.fetchone()
+
+    conn.close()
+
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Task not found"}
+        )
+
+    return {
+        "id": row[0],
+        "title": row[1],
+        "done": bool(row[2])
+    }
 
 
 @app.post(
