@@ -170,21 +170,48 @@ def update_task(task_id: int, updates: TaskUpdate):
             content={"error": "At least title or done is required"}
         )
 
-    for task in tasks:
-        if task["id"] == task_id:
+    conn = sqlite3.connect("tasks.db")
+    cursor = conn.cursor()
 
-            if updates.title is not None:
-                task["title"] = updates.title
-
-            if updates.done is not None:
-                task["done"] = updates.done
-
-            return task
-
-    return JSONResponse(
-        status_code=404,
-        content={"error": f"Task {task_id} not found"}
+    # First get the existing task
+    cursor.execute(
+        "SELECT id, title, done FROM tasks WHERE id = ?",
+        (task_id,)
     )
+    row = cursor.fetchone()
+
+    if row is None:
+        conn.close()
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"Task {task_id} not found"}
+        )
+
+    # Keep existing values when a field isn't provided
+    title = updates.title if updates.title is not None else row[1]
+    done = int(updates.done) if updates.done is not None else row[2]
+
+    cursor.execute(
+        "UPDATE tasks SET title = ?, done = ? WHERE id = ?",
+        (title, done, task_id)
+    )
+
+    conn.commit()
+
+    # Get updated task
+    cursor.execute(
+        "SELECT id, title, done FROM tasks WHERE id = ?",
+        (task_id,)
+    )
+    updated_row = cursor.fetchone()
+
+    conn.close()
+
+    return {
+        "id": updated_row[0],
+        "title": updated_row[1],
+        "done": bool(updated_row[2])
+    }
 
 
 @app.delete(
@@ -193,15 +220,34 @@ def update_task(task_id: int, updates: TaskUpdate):
     description="Deletes a task."
 )
 def delete_task(task_id: int):
-    for task in tasks:
-        if task["id"] == task_id:
-            tasks.remove(task)
-            return
 
-    return JSONResponse(
-        status_code=404,
-        content={"error": f"Task {task_id} not found"}
+    conn = sqlite3.connect("tasks.db")
+    cursor = conn.cursor()
+
+    # Check whether task exists
+    cursor.execute(
+        "SELECT id FROM tasks WHERE id = ?",
+        (task_id,)
     )
+
+    row = cursor.fetchone()
+
+    if row is None:
+        conn.close()
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"Task {task_id} not found"}
+        )
+
+    cursor.execute(
+        "DELETE FROM tasks WHERE id = ?",
+        (task_id,)
+    )
+
+    conn.commit()
+    conn.close()
+
+    return None
 
 
 @app.get(
