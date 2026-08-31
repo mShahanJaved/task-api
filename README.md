@@ -1,4 +1,3 @@
-```markdown
 # Task API
 
 A small CRUD API built with Python, FastAPI, and SQLite as part of the **FlyRank Backend Engineering + AI Internship — Backend Track**.
@@ -75,7 +74,6 @@ The SQLite database file is created automatically by the application.
 ```bash
 git clone https://github.com/mShahanJaved/task-api.git
 cd task-api
-```
 
 ### 2. Create a virtual environment
 
@@ -1190,4 +1188,3 @@ DB Browser for SQLite
 ```
 
 This demonstrates that the API is fully backed by persistent SQLite storage rather than an in-memory Python list.
-```
