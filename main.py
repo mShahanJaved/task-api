@@ -17,7 +17,7 @@ def get_connection():
 
 
 def init_db():
-    """Creates the tasks table and inserts seed data if the table is empty."""
+    """Creates the tasks table, index, and seed data if needed."""
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -29,19 +29,32 @@ def init_db():
         )
     """)
 
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_tasks_title
+        ON tasks(title)
+    """)
+
     cursor.execute("SELECT COUNT(*) FROM tasks")
     count = cursor.fetchone()[0]
 
     if count == 0:
-        cursor.executemany(
-            "INSERT INTO tasks (title, done) VALUES (?, ?)",
-            [
-                ("Learn FastAPI", 0),
-                ("Build Task API", 0),
-                ("Push to GitHub", 0),
-            ]
-        )
-        conn.commit()
+        try:
+            cursor.execute("BEGIN")
+
+            cursor.executemany(
+                "INSERT INTO tasks (title, done) VALUES (?, ?)",
+                [
+                    ("Learn FastAPI", 0),
+                    ("Build Task API", 0),
+                    ("Push to GitHub", 0),
+                ]
+            )
+
+            conn.commit()
+
+        except Exception:
+            conn.rollback()
+            raise
 
     conn.close()
 

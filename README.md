@@ -1,3 +1,4 @@
+```markdown
 # Task API
 
 A small CRUD API built with Python, FastAPI, and SQLite as part of the **FlyRank Backend Engineering + AI Internship — Backend Track**.
@@ -25,11 +26,16 @@ The API supports creating, reading, updating, deleting, filtering, searching, so
 - Reset task data
 - Persistent SQLite database storage
 - Parameterized SQL queries
-- Automatic database and table creation
+- Automatic database creation
+- Automatic table creation
 - Automatic seed data
 - Database-backed CRUD operations
+- Database index for title searching
+- Database transactions for seed operations
 - Interactive Swagger UI documentation
 - SQL exploration using DB Browser for SQLite
+- Git version control
+- Public GitHub repository
 
 ---
 
@@ -56,7 +62,9 @@ Before running the project, make sure you have:
 - Git
 - A web browser
 
-SQLite does not require a separate database server or installation when using Python's built-in `sqlite3` module. The SQLite database file is created automatically by the application.
+SQLite does not require a separate database server or installation when using Python's built-in `sqlite3` module.
+
+The SQLite database file is created automatically by the application.
 
 ---
 
@@ -85,7 +93,7 @@ Activate the virtual environment:
 
 ### 3. Install dependencies
 
-```bash
+```powershell
 pip install -r requirements.txt
 ```
 
@@ -95,13 +103,13 @@ pip install -r requirements.txt
 
 Start the development server:
 
-```bash
+```powershell
 fastapi dev main.py
 ```
 
 The API will be available at:
 
-```
+```text
 http://localhost:8000
 ```
 
@@ -109,7 +117,7 @@ http://localhost:8000
 
 Interactive API documentation is available at:
 
-```
+```text
 http://localhost:8000/docs
 ```
 
@@ -119,11 +127,11 @@ Swagger UI can be used to test the API endpoints directly from the browser.
 
 ---
 
-## Database
+# Database
 
 The application uses SQLite for persistent data storage.
 
-### Why SQLite?
+## Why SQLite?
 
 SQLite was chosen because it provides:
 
@@ -136,7 +144,7 @@ SQLite was chosen because it provides:
 
 The database file is:
 
-```
+```text
 tasks.db
 ```
 
@@ -144,21 +152,24 @@ The application creates this file automatically if it does not already exist.
 
 The database contains a `tasks` table with the following columns:
 
-| Column | Type    | Description                                  |
-|--------|---------|-----------------------------------------------|
-| id     | INTEGER | Primary key automatically assigned by SQLite  |
-| title  | TEXT    | Task title                                    |
-| done   | INTEGER | Completion status (0 = false, 1 = true)       |
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER | Primary key automatically assigned by SQLite |
+| `title` | TEXT | Task title |
+| `done` | INTEGER | Completion status (`0 = false`, `1 = true`) |
 
-### Database Initialization
+---
+
+## Database Initialization
 
 When the application starts, it:
 
 1. Opens or creates `tasks.db`.
 2. Creates the `tasks` table if it does not already exist.
-3. Checks whether the table contains any tasks.
-4. Inserts the example tasks only when the table is empty.
-5. Commits the changes.
+3. Creates the title-search index if it does not already exist.
+4. Checks whether the table contains any tasks.
+5. Inserts the example tasks only when the table is empty.
+6. Commits the seed transaction.
 
 The seed tasks are:
 
@@ -168,15 +179,15 @@ The seed tasks are:
 
 The seed data is inserted only when the table contains zero rows. This prevents the seed tasks from being duplicated every time the server restarts.
 
-A new clone does not require manual database setup. Running the documented server command creates the database, table, and seed data automatically.
+A new clone does not require manual database setup. Running the documented server command creates the database, table, index, and seed data automatically.
 
 ---
 
-## Persistent Storage
+# Persistent Storage
 
 In Assignment 1, tasks were stored in a Python list:
 
-```
+```text
 Client
    ↓
 FastAPI
@@ -188,7 +199,7 @@ Data was lost whenever the server restarted.
 
 In Assignment 2, the storage layer was replaced with SQLite:
 
-```
+```text
 Client
    ↓
 FastAPI
@@ -198,51 +209,72 @@ SQLite
 tasks.db
 ```
 
-The API now reads and writes task data directly to the SQLite database. Because the data is stored in `tasks.db`, tasks survive server restarts.
+The API now reads and writes task data directly to the SQLite database.
+
+Because the data is stored in `tasks.db`, tasks survive server restarts.
+
+SQLite therefore acts as the persistent source of truth for task data.
 
 ---
 
-## API Endpoints
+# API Endpoints
 
-| Method | Endpoint         | Description                          | Success |
-|--------|------------------|---------------------------------------|---------|
-| GET    | /                | Returns API information               | 200     |
-| GET    | /health          | Checks API health                     | 200     |
-| GET    | /tasks           | Returns tasks                         | 200     |
-| GET    | /tasks/{task_id} | Returns a task by ID                  | 200     |
-| POST   | /tasks           | Creates a new task                    | 201     |
-| PUT    | /tasks/{task_id} | Updates an existing task              | 200     |
-| DELETE | /tasks/{task_id} | Deletes a task                        | 204     |
-| GET    | /stats           | Returns task statistics               | 200     |
-| POST   | /reset           | Resets tasks to the original seed data| 200     |
+| Method | Endpoint | Description | Success |
+|---|---|---|---|
+| GET | `/` | Returns API information | 200 |
+| GET | `/health` | Checks API health | 200 |
+| GET | `/tasks` | Returns tasks | 200 |
+| GET | `/tasks/{task_id}` | Returns a task by ID | 200 |
+| POST | `/tasks` | Creates a new task | 201 |
+| PUT | `/tasks/{task_id}` | Updates an existing task | 200 |
+| DELETE | `/tasks/{task_id}` | Deletes a task | 204 |
+| GET | `/stats` | Returns task statistics | 200 |
+| POST | `/reset` | Resets tasks to the original seed data | 200 |
 
 ---
 
-## Query Parameters
+# Query Parameters
 
 The `/tasks` endpoint supports optional filtering, searching, and sorting.
 
-### Filter by completion status
+## Filter by Completion Status
 
 Get completed tasks:
 
-```
+```text
 GET /tasks?done=true
 ```
 
 Get incomplete tasks:
 
-```
+```text
 GET /tasks?done=false
 ```
 
 The completion filter is performed directly in SQLite using a `WHERE` clause.
 
-### Search tasks
+Example SQL:
+
+```sql
+SELECT id, title, done
+FROM tasks
+WHERE done = ?;
+```
+
+The Python boolean is converted to SQLite's integer representation:
+
+```text
+true  → 1
+false → 0
+```
+
+---
+
+## Search Tasks
 
 Search by title:
 
-```
+```text
 GET /tasks?search=milk
 ```
 
@@ -254,15 +286,23 @@ WHERE title LIKE ?
 
 The search returns tasks whose titles contain the provided search text.
 
-### Combine filtering and search
+The search value is passed as a SQL parameter rather than being directly inserted into the SQL statement.
 
-```
+---
+
+## Combine Filtering and Search
+
+```text
 GET /tasks?done=false&search=milk
 ```
 
-This returns incomplete tasks whose titles contain "milk".
+This returns incomplete tasks whose titles contain `"milk"`.
 
-### Sort tasks
+The filtering and searching conditions are combined in SQL using `WHERE` and `AND`.
+
+---
+
+## Sort Tasks
 
 Tasks returned by `/tasks` are ordered alphabetically by title using SQL:
 
@@ -270,15 +310,17 @@ Tasks returned by `/tasks` are ordered alphabetically by title using SQL:
 ORDER BY title
 ```
 
+Sorting is therefore performed by SQLite rather than by a Python loop.
+
 ---
 
-## CRUD Operations
+# CRUD Operations
 
-### Create a Task
+## Create a Task
 
-**Request**
+### Request
 
-```
+```text
 POST /tasks
 ```
 
@@ -302,15 +344,21 @@ Example response:
 }
 ```
 
-Status code: `201 Created`
+Status code:
+
+```text
+201 Created
+```
 
 The task is stored in `tasks.db` and remains available after a server restart.
 
-### Get All Tasks
+---
 
-**Request**
+## Get All Tasks
 
-```
+### Request
+
+```text
 GET /tasks
 ```
 
@@ -319,13 +367,13 @@ Example response:
 ```json
 [
   {
-    "id": 1,
-    "title": "Learn FastAPI",
+    "id": 2,
+    "title": "Build Task API",
     "done": false
   },
   {
-    "id": 2,
-    "title": "Build Task API",
+    "id": 1,
+    "title": "Learn FastAPI",
     "done": false
   },
   {
@@ -336,13 +384,15 @@ Example response:
 ]
 ```
 
-The endpoint reads task data directly from SQLite.
+The endpoint reads task data directly from SQLite and orders results alphabetically by title.
 
-### Get a Single Task
+---
 
-**Request**
+## Get a Single Task
 
-```
+### Request
+
+```text
 GET /tasks/1
 ```
 
@@ -356,7 +406,13 @@ Example response:
 }
 ```
 
-If the task does not exist: `404 Not Found`
+If the task does not exist:
+
+```text
+404 Not Found
+```
+
+Example error:
 
 ```json
 {
@@ -364,11 +420,13 @@ If the task does not exist: `404 Not Found`
 }
 ```
 
-### Update a Task
+---
 
-**Request**
+## Update a Task
 
-```
+### Request
+
+```text
 PUT /tasks/1
 ```
 
@@ -391,7 +449,11 @@ Example response:
 }
 ```
 
-Status code: `200 OK`
+Status code:
+
+```text
+200 OK
+```
 
 The update is performed using SQL:
 
@@ -403,15 +465,25 @@ WHERE id = ?
 
 The updated task is then returned from the database.
 
-If the task does not exist: `404 Not Found`
+If the task does not exist:
 
-Invalid request data returns: `400 Bad Request`
-
-### Delete a Task
-
-**Request**
-
+```text
+404 Not Found
 ```
+
+Invalid request data returns:
+
+```text
+400 Bad Request
+```
+
+---
+
+## Delete a Task
+
+### Request
+
+```text
 DELETE /tasks/1
 ```
 
@@ -422,32 +494,48 @@ DELETE FROM tasks
 WHERE id = ?
 ```
 
-Successful deletion returns: `204 No Content` (empty response body).
+Successful deletion returns:
 
-If the task does not exist: `404 Not Found`
+```text
+204 No Content
+```
+
+The response body is empty.
+
+If the task does not exist:
+
+```text
+404 Not Found
+```
 
 ---
 
-## SQL and Parameterized Queries
+# SQL and Parameterized Queries
 
 The API uses SQL queries to communicate with SQLite.
 
-Retrieve a task:
+All CRUD operations use parameterized SQL placeholders.
+
+## Retrieve a Task
 
 ```sql
-SELECT * FROM tasks WHERE id = ?
+SELECT id, title, done
+FROM tasks
+WHERE id = ?
 ```
 
-The task ID is passed separately as a parameter instead of being directly inserted into the SQL string. This is called a **parameterized query** and is a standard technique for reducing SQL injection risks.
+The task ID is passed separately as a parameter instead of being directly inserted into the SQL string.
 
-Create a task:
+This is called a **parameterized query** and is a standard technique for reducing SQL injection risks.
+
+## Create a Task
 
 ```sql
 INSERT INTO tasks (title, done)
 VALUES (?, ?)
 ```
 
-Update a task:
+## Update a Task
 
 ```sql
 UPDATE tasks
@@ -455,7 +543,7 @@ SET title = ?, done = ?
 WHERE id = ?
 ```
 
-Delete a task:
+## Delete a Task
 
 ```sql
 DELETE FROM tasks
@@ -466,13 +554,13 @@ Parameterized queries are used throughout the database operations instead of con
 
 ---
 
-## SQL Exploration
+# SQL Exploration
 
-The database can also be inspected directly using DB Browser for SQLite.
+The database can also be inspected directly using **DB Browser for SQLite**.
 
 The database file is:
 
-```
+```text
 tasks.db
 ```
 
@@ -483,38 +571,44 @@ DB Browser can be used to:
 - Execute SQL queries
 - Modify database records
 - Verify that API changes are stored in SQLite
+- Inspect database indexes
+- Verify SQL statements and database structure
 
 ![SQL Query in DB Browser](query.png)
 
-### Example SQL Queries
+---
 
-List all tasks:
+## Example SQL Queries
+
+### List all tasks
 
 ```sql
 SELECT * FROM tasks;
 ```
 
-Get completed tasks:
+### Get completed tasks
 
 ```sql
-SELECT * FROM tasks
+SELECT *
+FROM tasks
 WHERE done = 1;
 ```
 
-Count all tasks:
+### Count all tasks
 
 ```sql
-SELECT COUNT(*) FROM tasks;
+SELECT COUNT(*)
+FROM tasks;
 ```
 
-Mark every task as completed:
+### Mark every task as completed
 
 ```sql
 UPDATE tasks
 SET done = 1;
 ```
 
-Delete all completed tasks:
+### Delete all completed tasks
 
 ```sql
 DELETE FROM tasks
@@ -525,13 +619,13 @@ Changes made directly in DB Browser are reflected by the API because both the AP
 
 ---
 
-## Statistics
+# Statistics
 
 The `/stats` endpoint calculates task statistics using SQL queries.
 
-**Request**
+### Request
 
-```
+```text
 GET /stats
 ```
 
@@ -566,15 +660,17 @@ Where:
 - `done` = number of completed tasks
 - `open` = number of incomplete tasks
 
+The statistics are calculated from the database rather than from an in-memory Python list.
+
 ---
 
-## Reset
+# Reset
 
 The `/reset` endpoint restores the original example tasks.
 
-**Request**
+### Request
 
-```
+```text
 POST /reset
 ```
 
@@ -609,7 +705,7 @@ This endpoint is useful for testing and demonstrations.
 
 ---
 
-## Validation
+# Validation
 
 The API validates incoming request data using Pydantic.
 
@@ -629,27 +725,39 @@ or:
 }
 ```
 
-returns: `400 Bad Request`
+returns:
+
+```text
+400 Bad Request
+```
 
 For updates, at least one of `title` or `done` must be provided.
 
-Unknown task IDs return: `404 Not Found`
+Unknown task IDs return:
 
-Successful deletion returns: `204 No Content`
+```text
+404 Not Found
+```
+
+Successful deletion returns:
+
+```text
+204 No Content
+```
 
 ---
 
-## Example: Health Check
+# Example: Health Check
 
 Using curl:
 
-```bash
+```powershell
 curl.exe -i http://localhost:8000/health
 ```
 
 Example response:
 
-```
+```text
 HTTP/1.1 200 OK
 content-type: application/json
 
@@ -658,7 +766,37 @@ content-type: application/json
 
 ---
 
-## Persistence Test
+# API Compatibility with Assignment 1
+
+Assignment 2 keeps the same core CRUD API contract from Assignment 1:
+
+```text
+GET    /tasks
+GET    /tasks/{task_id}
+POST   /tasks
+PUT    /tasks/{task_id}
+DELETE /tasks/{task_id}
+```
+
+The request and response shapes remain compatible with Assignment 1.
+
+The main change is the storage implementation:
+
+```text
+Assignment 1:
+FastAPI → Python list
+
+Assignment 2:
+FastAPI → SQLite
+```
+
+The API interface remains the same while the underlying storage layer changes.
+
+This demonstrates that storage can be treated as an **implementation detail**: clients continue using the same API even though the backend storage has changed from memory to a persistent database.
+
+---
+
+# Persistence Test
 
 One of the main goals of Assignment 2 is proving that task data survives a server restart.
 
@@ -668,46 +806,110 @@ One of the main goals of Assignment 2 is proving that task data survives a serve
 4. Stop the server.
 5. Start the server again.
 6. Run `GET /tasks`.
+7. Open `tasks.db` in DB Browser for SQLite.
 
-The task created before the restart should still exist. This demonstrates that the API is reading and writing persistent data from `tasks.db` instead of an in-memory Python list.
+The task created before the restart should still exist.
+
+This demonstrates that the API is reading and writing persistent data from `tasks.db` instead of an in-memory Python list.
+
+Persistence can therefore be verified in two ways:
+
+- Through the API after restarting the server.
+- Directly by opening `tasks.db` in DB Browser for SQLite.
 
 ---
 
-## Fresh Clone Test
+# Fresh Clone Test
 
 A fresh clone should not require manual database setup.
 
 To simulate a fresh environment:
 
-1. Delete `tasks.db` if it exists.
-2. Start the server using:
+1. Clone the repository.
+2. Install the dependencies.
+3. Ensure `tasks.db` does not already exist.
+4. Start the server using:
 
-```bash
-   fastapi dev main.py
+```powershell
+fastapi dev main.py
 ```
 
-3. Open:
+5. Open:
 
+```text
+http://localhost:8000/docs
 ```
-   http://localhost:8000/docs
-```
 
-4. Run `GET /tasks`.
+6. Run `GET /tasks`.
 
-The application should automatically:
+The application automatically:
 
-- Create `tasks.db`
-- Create the `tasks` table
-- Insert the three seed tasks
-- Return the three example tasks
+- Creates `tasks.db`
+- Creates the `tasks` table
+- Creates the title-search index
+- Inserts the three seed tasks
+- Returns the example tasks
 
-This allows a new user to get the project running in a few minutes without manually creating a database.
+No manual database creation is required.
+
+This means another developer can clone the public repository and get a working application with its database in a few minutes.
 
 ---
 
-## Project Structure
+# Database Index
 
+An index was added to the `title` column because the `/tasks` endpoint supports searching tasks by title.
+
+The index is created automatically when the application starts:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_tasks_title
+ON tasks(title);
 ```
+
+An **index** is a database structure that helps SQLite find matching rows more efficiently when searching or filtering data.
+
+The index supports the database-powered search functionality:
+
+```sql
+SELECT id, title, done
+FROM tasks
+WHERE title LIKE ?;
+```
+
+The index can be verified directly in DB Browser for SQLite using:
+
+```sql
+SELECT name, sql
+FROM sqlite_master
+WHERE type = 'index';
+```
+
+The result confirms that the `idx_tasks_title` index exists.
+
+![Index verification in DB Browser for SQLite](index.png)
+
+---
+
+# Database Transactions
+
+The initial seed operation uses a database transaction when inserting the three example tasks.
+
+The three seed records are inserted together as a single transaction.
+
+If all inserts succeed, the transaction is committed.
+
+If an error occurs before the transaction is committed, the database connection does not commit the partial operation, preventing an incomplete seed from being treated as successful.
+
+This makes the seed operation effectively **all-or-nothing**.
+
+Transactions matter because multi-step database changes should not leave the database in a partially completed state if something goes wrong during the operation.
+
+---
+
+# Project Structure
+
+```text
 task-api/
 ├── .gitignore
 ├── main.py
@@ -718,34 +920,37 @@ task-api/
 └── tasks.db
 ```
 
-### Files
+> **Note:** `tasks.db` is generated automatically by the application and is kept out of Git version control so that each fresh clone can create its own database.
 
-- **main.py** — Contains the FastAPI application, API routes, validation, SQL queries, and SQLite database operations.
-- **tasks.db** — SQLite database containing persistent task data. It is generated automatically by the application.
-- **requirements.txt** — Contains the Python dependencies required to run the project.
-- **README.md** — Project documentation and setup instructions.
-- **swagger.png** — Screenshot demonstrating the API through Swagger UI.
-- **query.png** — Screenshot demonstrating SQL queries executed against the SQLite database using DB Browser for SQLite.
-- **.gitignore** — Prevents files such as the Python virtual environment, Python cache files, and the database file from being committed.
+## Files
 
-> **Note:** `tasks.db` is normally kept out of version control so that each fresh clone can create its own database automatically. It is shown here for documentation purposes only.
-
----
-
-## HTTP Status Codes
-
-| Status | Meaning                        |
-|--------|---------------------------------|
-| 200    | Successful request              |
-| 201    | Resource successfully created   |
-| 204    | Resource successfully deleted   |
-| 400    | Invalid request                 |
-| 404    | Task not found                  |
-| 500    | Internal server error           |
+- **`main.py`** — Contains the FastAPI application, API routes, validation, SQL queries, database initialization, seeding, indexing, transactions, and SQLite database operations.
+- **`tasks.db`** — SQLite database containing persistent task data. It is generated automatically by the application and is normally git-ignored.
+- **`requirements.txt`** — Contains the Python dependencies required to run the project.
+- **`README.md`** — Project documentation and setup instructions.
+- **`swagger.png`** — Screenshot demonstrating the API through Swagger UI.
+- **`query.png`** — Screenshot demonstrating SQL queries executed against the SQLite database using DB Browser for SQLite.
+- **`index.png`** — Screenshot demonstrating the SQLite database index in DB Browser for SQLite.
+- **`.gitignore`** — Prevents files such as the Python virtual environment, Python cache files, and the generated database file from being committed.
 
 ---
 
-## Learning Outcomes
+# HTTP Status Codes
+
+| Status | Meaning |
+|---|---|
+| 200 | Successful request |
+| 201 | Resource successfully created |
+| 204 | Resource successfully deleted |
+| 400 | Invalid request |
+| 404 | Task not found |
+| 500 | Internal server error |
+
+The CRUD endpoints preserve the status-code behavior established in Assignment 1.
+
+---
+
+# Learning Outcomes
 
 This project demonstrates practical backend concepts including:
 
@@ -767,18 +972,21 @@ This project demonstrates practical backend concepts including:
 - SQL aggregate functions
 - Database-backed API design
 - Database initialization and seeding
+- Database indexes
+- Database transactions
 - Database inspection with DB Browser for SQLite
 - API testing with Swagger UI
+- API testing with curl
 - Git version control
 - GitHub repository management
 
 ---
 
-## Assignment Progress
+# Assignment Progress
 
-This project is part of the FlyRank Backend Engineering + AI Internship — Backend Track.
+This project is part of the **FlyRank Backend Engineering + AI Internship — Backend Track**.
 
-### Assignment 1 — Build Your First CRUD API
+## Assignment 1 — Build Your First CRUD API
 
 Completed:
 
@@ -791,21 +999,26 @@ Completed:
 - Reset functionality
 - Swagger UI
 - GitHub publication
+- README documentation
 
-### Assignment 2 — Connect CRUD to the Database
+---
+
+## Assignment 2 — Connect CRUD to the Database
 
 Completed stages:
 
-- Stage 0 — Create SQLite database
-- Stage 1 — Read from database
-- Stage 2 — Insert new tasks into database
-- Stage 3 — Update and delete tasks using SQL
-- Stage 4 — Explore SQLite using DB Browser for SQLite
-- Stage 5 — Database documentation and publishing
+- **Stage 0 — Create SQLite database**
+- **Stage 1 — Read from database**
+- **Stage 2 — Insert new tasks into database**
+- **Stage 3 — Update and delete tasks using SQL**
+- **Stage 4 — Explore SQLite using DB Browser for SQLite**
+- **Stage 5 — Database documentation and publishing**
 
 The application now uses SQLite as its persistent storage layer.
 
-### Assignment 2 Extras
+---
+
+## Assignment 2 Extras
 
 Implemented optional database-powered improvements:
 
@@ -813,33 +1026,107 @@ Implemented optional database-powered improvements:
 - SQL status filtering using `WHERE`
 - Alphabetical sorting using `ORDER BY title`
 - SQL-based statistics using `COUNT(*)`
+- Database index on `title` for search support
+- Database transaction for seed insertion
 
 These improvements move more data processing into the database instead of performing the operations in Python.
 
 ---
 
-## Architecture
+# Requirements Checklist
 
-```
-Client
-   │
-   │ HTTP Requests
-   ▼
-FastAPI
-   │
-   │ SQL Queries
-   ▼
-SQLite
-   │
-   ▼
-tasks.db
-```
+The Assignment 2 requirements are covered by the implementation and documentation.
 
-The client communicates with the API. The API handles routing, validation, and application logic while communicating with SQLite for persistent data storage. The database acts as the persistent source of truth for task data.
+### API
+
+- Same CRUD endpoints as Assignment 1
+- Same core request/response shapes
+- Correct success status codes
+- Correct error status codes
+- JSON error messages
+- SQLite-backed task storage
+
+### Database
+
+- `tasks.db` created automatically
+- `tasks` table created automatically
+- Three example tasks seeded automatically
+- Seed data inserted only when the database is empty
+- Server restarts do not duplicate seed tasks
+- Persistent data survives server restarts
+
+### SQL
+
+- CRUD operations use SQL
+- SQL queries use parameterized placeholders
+- Search uses SQL `LIKE`
+- Filtering uses SQL `WHERE`
+- Sorting uses SQL `ORDER BY`
+- Statistics use SQL `COUNT(*)`
+- Search index added to `title`
+
+### Reliability
+
+- Seed operation uses a transaction
+- Multi-step database initialization is handled safely
+- Database can be recreated automatically on a fresh clone
+
+### Documentation
+
+- SQLite choice explained
+- Database location documented
+- Run command documented
+- SQL examples included
+- DB Browser screenshot included
+- Index screenshot included
+- Persistence process documented
+- Assignment progress documented
 
 ---
 
-## Built With
+# Architecture
+
+```text
+                         HTTP Requests
+Client  ─────────────────────────────────► FastAPI
+                                             │
+                                             │
+                                      Routing & Validation
+                                             │
+                                             ▼
+                                        SQL Queries
+                                             │
+                                             ▼
+                                          SQLite
+                                             │
+                                             ▼
+                                         tasks.db
+```
+
+The client communicates with the API.
+
+FastAPI handles:
+
+- Routing
+- Request validation
+- HTTP status codes
+- Application logic
+
+SQLite handles:
+
+- Persistent task storage
+- SQL filtering
+- SQL searching
+- SQL sorting
+- SQL statistics
+- Database indexing
+- Transactional database operations
+
+The database acts as the persistent source of truth for task data.
+
+---
+
+# Built With
 
 - Python
 - FastAPI
@@ -854,9 +1141,53 @@ The client communicates with the API. The API handles routing, validation, and a
 
 ---
 
-## Author
+# Author
 
 **Shahan Javed**
-Built as part of the FlyRank Backend Engineering + AI Internship.
 
-GitHub Repository: [https://github.com/mShahanJaved/task-api](https://github.com/mShahanJaved/task-api)
+Built as part of the **FlyRank Backend Engineering + AI Internship**.
+
+GitHub Repository:
+
+https://github.com/mShahanJaved/task-api
+
+---
+
+# Final Verification
+
+The project is designed so that a fresh clone can be started without manually creating the SQLite database.
+
+The expected flow is:
+
+```text
+Clone Repository
+       ↓
+Create Virtual Environment
+       ↓
+Install Dependencies
+       ↓
+fastapi dev main.py
+       ↓
+tasks.db created automatically
+       ↓
+tasks table created automatically
+       ↓
+title index created automatically
+       ↓
+3 seed tasks inserted
+       ↓
+GET /tasks
+       ↓
+Working API
+```
+
+The same task data can then be verified through both:
+
+```text
+FastAPI / Swagger / curl
+          +
+DB Browser for SQLite
+```
+
+This demonstrates that the API is fully backed by persistent SQLite storage rather than an in-memory Python list.
+```
